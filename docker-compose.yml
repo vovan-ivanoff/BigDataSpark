@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: solution_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bigdata_warehouse
+      POSTGRES_USER: warehouse_user
+      POSTGRES_PASSWORD: secure_pass_2026
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_warehouse_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+      - ./initial_data:/input_data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U warehouse_user -d bigdata_warehouse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # Critical for Postgres initial data setup
+
+  spark_jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: solution_spark
+    restart: unless-stopped
+    ports:
+      - "8889:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - PYSPARK_SUBMIT_ARGS=--jars /home/jovyan/jars/postgresql-42.7.9.jar,/home/jovyan/jars/clickhouse-jdbc-0.9.8-all.jar pyspark-shell
+    volumes:
+      - ./ipynb:/home/jovyan/work
+      - ./jars:/home/jovyan/jars
+    command: start-notebook.py --NotebookApp.token=''
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      clickhouse-server:
+        condition: service_started
+
+  clickhouse-server:
+    image: clickhouse/clickhouse-server:latest
+    container_name: solution_clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9001:9000"
+    environment:
+      CLICKHOUSE_DB: warehouse
+      CLICKHOUSE_USER: warehouse
+      CLICKHOUSE_PASSWORD: ch_pass_2026
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_warehouse_data:/var/lib/clickhouse
+
+volumes:
+  postgres_warehouse_data:
+  clickhouse_warehouse_data:
